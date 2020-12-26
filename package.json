@@ -1,6 +1,16 @@
 {
   "name": "hitomijs",
   "version": "0.0.0",
-  "main": "index.js",
-  "license": "MIT"
+  "main": "app.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "babel-node app.js"
+  },
+  "dependencies": {
+    "@babel/cli": "^7.12.10",
+    "@babel/core": "^7.12.10",
+    "@babel/node": "^7.12.10",
+    "@babel/preset-env": "^7.12.11",
+    "node-fetch": "^2.6.1"
+  }
 }
