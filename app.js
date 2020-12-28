@@ -3,19 +3,13 @@ import {
   writeFileSync,
   unlinkSync,
   existsSync,
-  mkdirSync
+  mkdirSync,
+  rmdirSync
 } from "fs";
-import exec from "child_process"
+import { spawn } from "child_process"
+import { join } from "path"
 
-const id = 1741297
-console.log(process.argv)
-
-
-var loading_timer;
-var domain = (/^dev\./.test("hitomi.la") ? 'dev' : 'ltn') + '.hitomi.la';
-var galleryblockextension = '.html';
-var galleryblockdir = 'galleryblock';
-var nozomiextension = '.nozomi';
+const id = process.argv[process.argv.length-1]
 
 function subdomain_from_galleryid(g, number_of_frontends) {
   var o = g % number_of_frontends;
@@ -72,21 +66,6 @@ function url_from_url_from_hash(galleryid, image, dir, ext, base) {
   return url_from_url(url_from_hash(galleryid, image, dir, ext), base);
 }
 
-function make_source_element(galleryid, file, type) {
-  return url_from_url_from_hash(galleryid, file, type, undefined, 'a')
-}
-
-function make_image_element(galleryid, file) {
-  return make_source_element(galleryid, file, 'webp');
-  if (file['hasavif']) {
-    return make_source_element(galleryid, file, 'avif');
-  }
-  if (file['haswebp']) {
-  }
-  return make_source_element(galleryid, file, 'png');
-}
-
-
 function getGalleryInfo(id) {
   return new Promise(resolve => {
     console.log("Getting galleryInfo (" + id + ") ...")
@@ -129,11 +108,30 @@ function createImageList(id, basedir) {
   })
 }
 
-createImageList(id, id)
-.then(text => writeFileSync(`${id}.txt`, text))
-.then(() => {
-  console.log(`mkdir ${id}\naria2c -i ${id}.txt`)
-})
-if (!existsSync(`${id}`)) {
-    mkdirSync(`${id}`);
+function spawnAsync(exename, options) {
+  return new Promise(resolve => {
+    const ariaps = spawn(join("bin", exename), options)
+    ariaps.stdout.on('data', (chunk) => console.log(chunk.toString()))
+    ariaps.stderr.on('data', (chunk) => console.log(chunk.toString()))
+    ariaps.on("close", ()=>resolve())
+  })
 }
+
+createImageList(id, id)
+.then(text => {
+  if (!existsSync(`${id}`)) {
+    mkdirSync(`${id}`);
+  }
+  writeFileSync(join(`${id}`, "list.txt"), text)
+  console.log("Downloading ... ")
+})
+.then(() => spawnAsync("aria2c.exe", ["-i", join(`${id}`, "list.txt"), "-c", "-m", "3", "-x", "2"]))
+.then(() => {
+  unlinkSync(join(`${id}`, "list.txt"))
+  console.log("Compressing ... ")
+})
+.then(() => spawnAsync("7z.exe", ["a", `${id}.zip`, `${id}`]))
+.then(() => {
+  console.log("Deleting cache ... ")
+  rmdirSync(`${id}`, { recursive: true })
+})
