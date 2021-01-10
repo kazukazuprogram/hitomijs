@@ -9,7 +9,6 @@ import {
 import { spawn } from "child_process"
 import { join } from "path"
 const ids = process.argv.slice(2)
-// const id = process.argv[process.argv.length-1]
 var filename = {};
 
 
