@@ -8,8 +8,10 @@ import {
 } from "fs";
 import { spawn } from "child_process"
 import { join } from "path"
+const ids = process.argv.slice(2)
+// const id = process.argv[process.argv.length-1]
+var filename = {};
 
-const id = process.argv[process.argv.length-1]
 
 function subdomain_from_galleryid(g, number_of_frontends) {
   var o = g % number_of_frontends;
@@ -66,6 +68,18 @@ function url_from_url_from_hash(galleryid, image, dir, ext, base) {
   return url_from_url(url_from_hash(galleryid, image, dir, ext), base);
 }
 
+function arg_to_id(url) {
+  return (url.match(/^[0-9]*$/)||(new URL(url)).pathname.match(/([0-9]*)\.html/).slice(1))[0]
+}
+
+function args_to_ids(args) {
+  var res = []
+  for (var arg in args) {
+    res.push(arg_to_id(args[arg]))
+  }
+  return res
+}
+
 function getGalleryInfo(id) {
   return new Promise(resolve => {
     console.log("Getting galleryInfo (" + id + ") ...")
@@ -95,6 +109,7 @@ function createImageList(id, basedir) {
   return new Promise(resolve => {
     getGalleryInfo(id).then(galleryinfo => {
       var urls = []
+      filename[id] = `${galleryinfo.japanese_title}_${id}.zip`
       for (var file in galleryinfo.files) {
         urls.push({
           url: url_from_url_from_hash(id, galleryinfo.files[file]),
@@ -113,25 +128,46 @@ function spawnAsync(exename, options) {
     const ariaps = spawn(join("bin", exename), options)
     ariaps.stdout.on('data', (chunk) => console.log(chunk.toString()))
     ariaps.stderr.on('data', (chunk) => console.log(chunk.toString()))
-    ariaps.on("close", ()=>resolve())
+    ariaps.on("close", () => resolve())
   })
 }
 
-createImageList(id, id)
-.then(text => {
-  if (!existsSync(`${id}`)) {
-    mkdirSync(`${id}`);
-  }
-  writeFileSync(join(`${id}`, "list.txt"), text)
-  console.log("Downloading ... ")
-})
-.then(() => spawnAsync("aria2c.exe", ["-i", join(`${id}`, "list.txt"), "-c", "-m", "3", "-x", "2"]))
-.then(() => {
-  unlinkSync(join(`${id}`, "list.txt"))
-  console.log("Compressing ... ")
-})
-.then(() => spawnAsync("7z.exe", ["a", `${id}.zip`, `${id}`]))
-.then(() => {
-  console.log("Deleting cache ... ")
-  rmdirSync(`${id}`, { recursive: true })
-})
+function exec(id) {
+  return new Promise(resolve => createImageList(id, id)
+    .then(text => {
+      if (!existsSync(`${id}`)) {
+        mkdirSync(`${id}`);
+      }
+      writeFileSync(join(`${id}`, "list.txt"), text)
+      console.log(`[${id}] Downloading ... `)
+    })
+    .then(() => spawnAsync("aria2c", ["-c", "-i", join(`${id}`, "list.txt"), "-c", "-m", "3", "-x", "2"]))
+    .then(() => {
+      unlinkSync(join(`${id}`, "list.txt"))
+      console.log(`[${id}] Compressing ... `)
+    })
+    .then(() => spawnAsync("7z", ["a", filename[id], `${id}`]))
+    .then(() => {
+      console.log(`[${id}] Deleting cache ... `)
+      rmdirSync(`${id}`, { recursive: true })
+    })
+    .then(()=>resolve())
+  )
+}
+
+function promise_loop(func, args, onEndOne=()=>{}, count=0) {
+  func(args[count]).then(()=>{
+    onEndOne(count)
+    if (args.length !== count+1) {
+      promise_loop(func, args, onEndOne=onEndOne, count+1)
+    }
+  })
+}
+
+if (ids.length === 1) {
+  exec(arg_to_id(ids[0]))
+} else {
+  var args = args_to_ids(ids)
+  console.log("ID: ", args)
+  promise_loop(exec, args)
+}
