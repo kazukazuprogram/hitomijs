@@ -67,8 +67,12 @@ function url_from_url_from_hash(galleryid, image, dir, ext, base) {
   return url_from_url(url_from_hash(galleryid, image, dir, ext), base);
 }
 
-function arg_to_id(url) {
+function _arg_to_id(url) {
   return (url.match(/^[0-9]*$/)||(new URL(url)).pathname.match(/([0-9]*)\.html/).slice(1))[0]
+}
+
+function arg_to_id(url) {
+  return (url.match(/^[0-9]+(#[0-9]+:[0-9]+)?$/)||(new URL(url)).pathname.match(/([0-9]*)\.html/).slice(1))[0]
 }
 
 function args_to_ids(args) {
@@ -81,14 +85,14 @@ function args_to_ids(args) {
 
 function getGalleryInfo(id) {
   return new Promise(resolve => {
-    console.log("Getting galleryInfo (" + id + ") ...")
-    fetch("https://ltn.hitomi.la/galleries/" + id + ".js")
+    console.log("Getting galleryInfo (" + id.match(/[0-9]+/)[0] + ") ...")
+    fetch("https://ltn.hitomi.la/galleries/" + id.match(/[0-9]+/)[0] + ".js")
       .then(res => res.text())
       .then(body => {
-        writeFileSync(id + ".js", body.replace("var ", "exports."))
+        writeFileSync(id.match(/[0-9]+/)[0] + ".js", body.replace("var ", "exports."))
       })
-      .then(() => resolve(require("./" + id + ".js").galleryinfo))
-      .then(() => unlinkSync(id + ".js"))
+      .then(() => resolve(require("./" + id.match(/[0-9]+/)[0] + ".js").galleryinfo))
+      .then(() => unlinkSync(id.match(/[0-9]+/)[0] + ".js"))
   })
 }
 
@@ -108,15 +112,23 @@ function createImageList(id, basedir) {
   return new Promise(resolve => {
     getGalleryInfo(id).then(galleryinfo => {
       var urls = []
-      filename[id] = `${galleryinfo.japanese_title}_${id}.zip`
-      for (var file in galleryinfo.files) {
+      filename[id.match(/[0-9]+/)[0]] = `${galleryinfo.japanese_title}_${id}.zip`
+      var filelist
+      if (!id.match(/#/)) {
+        filelist = galleryinfo.files
+      } else {
+        var ulimit = id.match(/[0-9]+#([0-9]*)/)[1]
+        var tlimit = id.match(/[0-9]+#[0-9]+:([0-9]+)/)[1]
+        filelist = galleryinfo.files.slice(Number(ulimit), Number(tlimit))
+      }
+      for (var file in filelist) {
         urls.push({
-          url: url_from_url_from_hash(id, galleryinfo.files[file]),
+          url: url_from_url_from_hash(id.match(/[0-9]+/)[0], galleryinfo.files[file]),
           name: galleryinfo.files[file].name
         })
       }
       return urls
-    }).then(urls=>createText(id, urls, basedir)).then(text=>{
+    }).then(urls=>createText(id.match(/[0-9]+/)[0], urls, basedir)).then(text=>{
       resolve(text)
     })
   })
@@ -132,23 +144,23 @@ function spawnAsync(exename, options) {
 }
 
 function exec(id) {
-  return new Promise(resolve => createImageList(id, id)
+  return new Promise(resolve => createImageList(id, id.match(/[0-9]+/)[0])
     .then(text => {
-      if (!existsSync(`${id}`)) {
-        mkdirSync(`${id}`);
+      if (!existsSync(`${id.match(/[0-9]+/)[0]}`)) {
+        mkdirSync(`${id.match(/[0-9]+/)[0]}`);
       }
-      writeFileSync(join(`${id}`, "list.txt"), text)
-      console.log(`[${id}] Downloading ... `)
+      writeFileSync(join(`${id.match(/[0-9]+/)[0]}`, "list.txt"), text)
+      console.log(`[${id.match(/[0-9]+/)[0]}] Downloading ... `)
     })
-    .then(() => spawnAsync("aria2c", ["-c", "-i", join(`${id}`, "list.txt"), "-c", "-m", "3", "-x", "2"]))
+    .then(() => spawnAsync("aria2c", ["-c", "-i", join(`${id.match(/[0-9]+/)[0]}`, "list.txt"), "-c", "-m", "3", "-x", "2"]))
     .then(() => {
-      unlinkSync(join(`${id}`, "list.txt"))
-      console.log(`[${id}] Compressing ... `)
+      unlinkSync(join(`${id.match(/[0-9]+/)[0]}`, "list.txt"))
+      console.log(`[${id.match(/[0-9]+/)[0]}] Compressing ... `)
     })
-    .then(() => spawnAsync("7z", ["a", filename[id], `${id}`]))
+    .then(() => spawnAsync("7z", ["a", filename[id.match(/[0-9]+/)[0]], `${id.match(/[0-9]+/)[0]}`]))
     .then(() => {
-      console.log(`[${id}] Deleting cache ... `)
-      rmdirSync(`${id}`, { recursive: true })
+      console.log(`[${id.match(/[0-9]+/)[0]}] Deleting cache ... `)
+      rmdirSync(`${id.match(/[0-9]+/)[0]}`, { recursive: true })
     })
     .then(()=>resolve())
   )
